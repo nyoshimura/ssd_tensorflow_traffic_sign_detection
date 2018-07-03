@@ -54,19 +54,19 @@ def ModelHelper(y_pred_conf, y_pred_loc):
 
 	# Confidence loss
 	logits = tf.reshape(y_pred_conf, [-1, num_total_preds, NUM_CLASSES])
-	conf_loss = tf.nn.sparse_softmax_cross_entropy_with_logits(logits, y_true_conf)
+	conf_loss = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=y_true_conf) # logits/labels are added due to TF1.8 (NY)
 	conf_loss = conf_loss_mask * conf_loss  # "zero-out" the loss for don't-care negatives
 	conf_loss = tf.reduce_sum(conf_loss)
 
 	# Localization loss (smooth L1 loss)
 	# loc_loss_mask is analagous to conf_loss_mask, except 4 times the size
 	diff = y_true_loc - y_pred_loc
-	
+
 	loc_loss_l2 = 0.5 * (diff**2.0)
 	loc_loss_l1 = tf.abs(diff) - 0.5
 	smooth_l1_condition = tf.less(tf.abs(diff), 1.0)
-	loc_loss = tf.select(smooth_l1_condition, loc_loss_l2, loc_loss_l1)
-	
+	loc_loss = tf.where(smooth_l1_condition, loc_loss_l2, loc_loss_l1) #select(smooth_l1_condition, loc_loss_l2, loc_loss_l1) # tf.select is changed to tf.where due to version (NY)
+
 	loc_loss_mask = tf.minimum(y_true_conf, 1)  # have non-zero localization loss only where we have matching ground-truth box
 	loc_loss_mask = tf.to_float(loc_loss_mask)
 	loc_loss_mask = tf.stack([loc_loss_mask] * 4, axis=2)  # [0, 1, 1] -> [[[0, 0, 0, 0], [1, 1, 1, 1], [1, 1, 1, 1]], ...]
@@ -156,8 +156,8 @@ def AlexNet():
 		preds_loc.append(net_loc)
 
 	# Concatenate all preds together into 1 vector, for both classification and localization predictions
-	final_pred_conf = tf.concat(1, preds_conf)
-	final_pred_loc = tf.concat(1, preds_loc)
+	final_pred_conf = tf.concat(preds_conf, 1)#(1, preds_conf) #  (NY)
+	final_pred_loc = tf.concat(preds_loc, 1)#(1, preds_loc)   #  (NY)
 
 	# Return a dictionary of {tensor_name: tensor_reference}
 	ret_dict = {
